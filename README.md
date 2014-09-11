@@ -1,4 +1,4 @@
-gpx_to_road_map
+GPX to road map
 ===============
 
 Algorithms of map construction based on GPS traces
