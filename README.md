@@ -1,9 +1,13 @@
 GPX to road map
 ===============
 
-Algorithms of map construction based on GPS traces
+GPS-based map inference algorithms.
 
-== Links
+## List of implemented algorithms
+
+* Biagoni2012
+
+## Links
 
 * http://www.mapconstruction.org/#et_page_7
 * http://www.cs.uic.edu/bin/view/Bits/Software

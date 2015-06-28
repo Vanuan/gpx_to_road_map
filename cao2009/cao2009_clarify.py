@@ -347,6 +347,7 @@ class Clarify:
             return self._path_bearing(location.prev_location, location)
         
         # if we reach here, there is an error
+        raise "Error"
         return None
     
     def _spring_force(self, x, k):
