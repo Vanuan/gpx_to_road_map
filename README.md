@@ -6,6 +6,7 @@ GPS-based map inference algorithms.
 ## List of implemented algorithms
 
 * Ahmed2014
+* Karagirou2012,2013
 * Ahmed2012
 * Biagoni2012
 * Cao2009
