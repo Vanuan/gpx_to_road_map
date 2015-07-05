@@ -1,11 +1,10 @@
 import cv
 from math import atan2,sqrt,ceil,pi
 import sys,getopt,os
-from location import TripLoader
+from plt_trip_loader import PltTripLoader
 from pylibs import spatialfunclib
 from itertools import tee, izip
 
-all_trips = TripLoader.get_all_trips("trips/")
 
 ##
 ## important parameters
@@ -17,9 +16,9 @@ gaussian_blur = 17
 voronoi_sampling_interval = 10 # sample one point every so many pixels along the outline
 MIN_DIR_COUNT = 10
 shave_until = 0.9999
-trip_max = len(all_trips)
+trip_max = None
 
-opts,args = getopt.getopt(sys.argv[1:],"c:t:b:s:hn:d:")
+opts,args = getopt.getopt(sys.argv[1:],"c:t:b:s:f:hn:d:")
 for o,a in opts:
     if o == "-c":
 	cell_size=int(a)
@@ -29,13 +28,21 @@ for o,a in opts:
 	gaussian_blur = int(a)	
     elif o == "-s":
 	voronoi_sampling_interval = int(a)
+    elif o == "-f":
+        filename = a
     elif o == "-d": 
 	shave_until = float(a)
     elif o == "-n":
 	trip_max = int(a)
     elif o == "-h":
-	print "Usage: davies2006.py [-c <cell_size>] [-t <mask_threshold>] [-b <gaussian_blur_size>] [-s <voronoi_sampling_interval>] [-d <shave_until_fraction>] [-n <max_trips>] [-h]\n"
+	print "Usage: davies2006.py [-c <cell_size>] [-t <mask_threshold>] [-b <gaussian_blur_size>] [-s <voronoi_sampling_interval>] [-d <shave_until_fraction>] [-n <max_trips>] [-f <trips_path>] [-h]\n"
 	sys.exit()
+
+print "Loading %s..." % filename
+all_trips = PltTripLoader.get_all_trips(filename)
+trip_max = trip_max or len(all_trips)
+print "%d trips loaded" % trip_max
+
 
 # 0 = North, 2 = East, 4 = South, 6 = West
 def getsector(fromx,fromy,tox,toy):
@@ -52,6 +59,7 @@ def pairwise(iterable):
 ##
 ## initialize some globals and read in the trips
 ##
+print "finding bounding box..."
 
 all_locations = reduce(lambda x,y: x+y,[t.locations for t in all_trips[:trip_max]])
 all_lats = [l.latitude for l in all_locations]
@@ -66,6 +74,7 @@ max_lon = max(all_lons)+0.005
 diff_lat = max_lat - min_lat
 diff_lon = max_lon - min_lon
 
+print "bounding box found"
 print min_lat, min_lon, max_lat,max_lon
 
 width = int(diff_lon * spatialfunclib.METERS_PER_DEGREE_LONGITUDE / cell_size)
@@ -84,12 +93,12 @@ sector_maps = {}
 ## Build an aggregate intensity map from all the edges
 ##
 
-filename = "cache/n%d_c%d.xml"%(trip_max,cell_size)
+filename = "tmp/cache/n%d_c%d.xml"%(trip_max,cell_size)
 if os.access(filename,os.F_OK):
     print "Found cached intensity map %s, loading."%(filename)
     themap = cv.Load(filename)
     for sector in range(8):
-	sector_maps[sector]=cv.Load("cache/n%d_c%d_s%d.xml"%(trip_max,cell_size,sector))
+	sector_maps[sector]=cv.Load("tmp/cache/n%d_c%d_s%d.xml"%(trip_max,cell_size,sector))
 else:
     print "Making new intensity map %s."%(filename)
     sector_temp = {}
@@ -131,7 +140,7 @@ else:
 	
     cv.Save(filename,themap)
     for sector in range(8):
-	cv.Save("cache/n%d_c%d_s%d.xml"%(trip_max,cell_size,sector),sector_maps[sector])
+	cv.Save("tmp/cache/n%d_c%d_s%d.xml"%(trip_max,cell_size,sector),sector_maps[sector])
 
     lines = cv.CreateMat(height,width,cv.CV_8U)
     cv.SetZero(lines)
@@ -142,7 +151,7 @@ else:
             dy=height-int(yscale*(dest.latitude - min_lat))
             dx=int(xscale*(dest.longitude - min_lon))
             cv.Line(lines,(ox,oy),(dx,dy),(255),1,cv.CV_AA)
-    cv.SaveImage("lines.png",lines)
+    cv.SaveImage("tmp/lines.png",lines)
 
 
 print "Intensity map acquired."
@@ -248,16 +257,16 @@ def paint_voronoi( subdiv, contour, img ):
 	lines+=draw_subdiv_facet( img, contour,cv.Subdiv2DRotateEdge( edge, 3 ))
 	
     print "Shaving lines"
-    while True:
-        oldsize = len(lines)
-    	lines=shave_lines(lines)
-	if len(lines)/float(oldsize) > shave_until: break
+#    while True:
+#        oldsize = len(lines)
+#    	lines=shave_lines(lines)
+#	if len(lines)/float(oldsize) > shave_until: break
     print "Done shaving lines"
 
     vertex_ids={}	    
     vertex_id=0
     seen_lines={}
-    edge_file = open("edges.txt",'w')
+    edge_file = open("output/edges.txt",'w')
     for line in lines:
 	if line in seen_lines: continue
 	else: 
@@ -273,7 +282,7 @@ def paint_voronoi( subdiv, contour, img ):
 	edge_file.write(`vertex_ids[line[0]]`+" "+`vertex_ids[line[1]]`+'\n')
     edge_file.close()
 
-    vertex_file=open("vertices.txt",'w')
+    vertex_file=open("output/vertices.txt",'w')
     for vertex in vertex_ids:
 	vertex_file.write(`vertex_ids[vertex]`+" "+`(height-vertex[1])/yscale+min_lat`+" "+`vertex[0]/xscale+min_lon`+'\n')
     vertex_file.close()
@@ -285,7 +294,7 @@ for sector in range(8):
     cv.SetZero(mask)
     cv.Smooth(sector_maps[sector], sector_maps[sector], cv.CV_GAUSSIAN, gaussian_blur,gaussian_blur)       
     cv.ConvertScale(sector_maps[sector],mask,1,0);
-    cv.SaveImage("sector"+`sector`+".png",mask)
+    cv.SaveImage("tmp/sector"+`sector`+".png",mask)
 # # create the mask and compute the contour
 
 mask = cv.CreateMat(height,width,cv.CV_8U)
@@ -301,13 +310,13 @@ cv.SetZero(mask)
 #cv.SaveImage("histogram.png",temp2)
 
 cv.Smooth(themap, themap, cv.CV_GAUSSIAN, gaussian_blur,gaussian_blur)
-cv.SaveImage("map.png",themap)
+cv.SaveImage("tmp/map.png",themap)
 (minval,maxval,minloc,maxloc)=cv.MinMaxLoc(themap)
 print "Min: "+`minval`+" max: "+`maxval`
 cv.ConvertScale(themap,mask,255.0/maxval,0);
-cv.SaveImage("mask.png",mask)
+cv.SaveImage("tmp/mask.png",mask)
 cv.CmpS(themap,mask_threshold,mask,cv.CV_CMP_GT)
-cv.SaveImage("thresholded.png",mask)
+cv.SaveImage("tmp/thresholded.png",mask)
 
 #contour = cv.FindContours(mask,cv.CreateMemStorage(),cv.CV_RETR_CCOMP,cv.CV_CHAIN_APPROX_SIMPLE)
 chain = cv.FindContours(mask,cv.CreateMemStorage(),cv.CV_RETR_CCOMP,cv.CV_CHAIN_CODE)
@@ -316,7 +325,7 @@ contour = cv.ApproxChains(chain,cv.CreateMemStorage(),cv.CV_CHAIN_APPROX_NONE,0,
 img = cv.CreateMat(height,width,cv.CV_8UC3)
 cv.SetZero(img)
 cv.DrawContours(img,contour,(255,255,255),(0,255,0),6,1)
-cv.SaveImage("contours.png",img)
+cv.SaveImage("tmp/contours.png",img)
 
 img = cv.CreateMat(height,width,cv.CV_8UC3)
 cv.SetZero(img)
@@ -346,6 +355,6 @@ print "Done calculating Voronoi"
 cv.DrawContours(img,contour,(255,255,255),(0,0,255),6,1)
 
 paint_voronoi(delaunay,contour,img)
-cv.SaveImage("voronoi.png",img)
+cv.SaveImage("tmp/voronoi.png",img)
 
 
